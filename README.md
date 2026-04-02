@@ -1,3 +1,7 @@
+## 🎥 Demo Video
+
+https://youtu.be/SsOO0bTtL-8
+
 # ResumeIQ
 
 An AI-powered resume analyzer that compares a candidate's resume against a job description and returns a semantic match score, detected strengths, skill gaps, and the most relevant resume sections.
