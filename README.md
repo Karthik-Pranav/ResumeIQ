@@ -1,6 +1,3 @@
-## 🎥 Demo Video
-
-https://youtu.be/SsOO0bTtL-8
 
 # ResumeIQ
 
