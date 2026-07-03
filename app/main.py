@@ -17,12 +17,22 @@ app = FastAPI(
 )
 
 # ---------------------------------------------------------------------------
-# CORS — allow all origins during development; tighten for production.
+# CORS — reads ALLOWED_ORIGINS from .env (comma-separated).
+# Defaults to ["*"] for development; set explicit origins in production.
+# allow_credentials is only enabled when specific origins are listed,
+# because the CORS spec forbids credentials with wildcard origins.
 # ---------------------------------------------------------------------------
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*").strip()
+_allowed_origins: list[str] = (
+    ["*"] if _raw_origins == "*"
+    else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+)
+_use_credentials = _allowed_origins != ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],            # TODO: restrict in production
-    allow_credentials=True,
+    allow_origins=_allowed_origins,
+    allow_credentials=_use_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

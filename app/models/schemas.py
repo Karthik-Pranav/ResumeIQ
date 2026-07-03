@@ -1,13 +1,12 @@
 """Pydantic models for the resume analysis API."""
 
 from __future__ import annotations
-
+from typing import Any
 from pydantic import BaseModel, Field
 
 
 class MatchedSection(BaseModel):
     """A resume chunk matched against a job-description chunk."""
-
     resume_chunk: str = Field(..., description="Text segment from the resume.")
     job_chunk: str = Field(..., description="Most relevant job-description segment.")
     similarity_score: float = Field(
@@ -16,76 +15,108 @@ class MatchedSection(BaseModel):
     )
 
 
-class AnalysisResponse(BaseModel):
-    """Response model returned by the /analyze endpoint."""
+class SkillEvidence(BaseModel):
+    """Evidence showing where a skill was found and the confidence level."""
+    confidence: str = Field(..., description="Confidence level (e.g., 'High', 'Medium', 'Low')")
+    found_in: list[str] = Field(default_factory=list, description="Sections or projects where this was found.")
 
-    match_score: int = Field(
-        ...,
-        ge=0,
-        le=100,
-        description="How well the resume matches the job description (0-100).",
+
+class SemanticMatch(BaseModel):
+    """Semantic match between a resume project/experience and a JD responsibility."""
+    resume_text: str = Field(..., description="The project or experience text from the resume.")
+    jd_responsibility: str = Field(..., description="The matched job responsibility.")
+    similarity_score: float = Field(..., description="Cosine similarity score.")
+
+
+class ATSFormattingScore(BaseModel):
+    """Detailed formatting checks."""
+    has_contact_details: bool = False
+    has_github: bool = False
+    has_linkedin: bool = False
+    has_professional_summary: bool = False
+    has_skills_section: bool = False
+    has_education: bool = False
+    has_projects: bool = False
+    has_experience: bool = False
+    readable_headings: bool = True
+    parse_quality_good: bool = True
+    resume_length_optimal: bool = True
+    section_ordering_logical: bool = True
+
+
+class AnalysisResponse(BaseModel):
+    """Response model returned by the /analyze endpoint (v3 Architecture)."""
+    
+    # ── Scores ──
+    overall_score: int = Field(..., ge=0, le=100)
+    required_skills_score: int = Field(..., ge=0, le=100)
+    preferred_skills_score: int = Field(..., ge=0, le=100)
+    semantic_score: int = Field(..., ge=0, le=100)
+    ats_score: int = Field(..., ge=0, le=100)
+    experience_score: int = Field(..., ge=0, le=100)
+    education_score: int = Field(..., ge=0, le=100)
+    projects_score: int = Field(..., ge=0, le=100)
+
+    # ── Skills ──
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_required: list[str] = Field(default_factory=list)
+    missing_preferred: list[str] = Field(default_factory=list)
+    
+    # ── Detailed Evidence ──
+    evidence: dict[str, SkillEvidence] = Field(
+        default_factory=dict, 
+        description="Mapping of skill names to their evidence."
     )
-    strengths: list[str] = Field(
-        ...,
-        description="Semantically matched skills found in the resume.",
-    )
-    gaps: list[str] = Field(
-        ...,
-        description="Skills required by the JD but not found in the resume.",
-    )
-    matched_sections: list[MatchedSection] = Field(
-        ...,
-        description="Top resume chunks most relevant to the job description.",
-    )
-    # ── Intelligence upgrade v2 fields (all optional / backward-compatible) ──
-    jd_warning: str | None = Field(
-        None,
-        description=(
-            "Present when the job description was short or vague. "
-            "Explains how it was expanded before analysis."
-        ),
-    )
-    matched_role: str | None = Field(
-        None,
-        description="Canonical role name matched during JD expansion, if any.",
-    )
-    keyword_breakdown: dict[str, list[str]] | None = Field(
-        None,
-        description=(
-            "Structured keyword breakdown: "
-            "{'core_skills': [...], 'tools': [...], 'concepts': [...]}."
-        ),
+    semantic_matches: list[SemanticMatch] = Field(default_factory=list)
+    
+    # ── ATS & Feedback ──
+    formatting: ATSFormattingScore = Field(default_factory=ATSFormattingScore)
+    recommendations: list[str] = Field(default_factory=list)
+    ai_feedback: str = Field(
+        "", 
+        description="Detailed LLM-generated feedback explaining matches and suggesting improvements."
     )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "match_score": 72,
-                    "strengths": [
-                        "Machine Learning — strong match (score: 0.81)",
-                        "Python — strong match (score: 0.78)",
-                    ],
-                    "gaps": ["kubernetes", "model deployment"],
-                    "matched_sections": [
-                        {
-                            "resume_chunk": "5 years building REST APIs with FastAPI",
-                            "job_chunk": "Experience with Python and REST API design",
-                            "similarity_score": 0.82,
+                    "overall_score": 91,
+                    "required_skills_score": 95,
+                    "preferred_skills_score": 68,
+                    "semantic_score": 90,
+                    "ats_score": 94,
+                    "experience_score": 85,
+                    "education_score": 100,
+                    "projects_score": 96,
+                    "matched_skills": ["Python", "Machine Learning", "FastAPI"],
+                    "missing_required": ["Kubernetes"],
+                    "missing_preferred": ["GraphQL"],
+                    "evidence": {
+                        "Python": {
+                            "confidence": "High",
+                            "found_in": ["Technical Skills", "Resume Analyzer Project"]
                         }
-                    ],
-                    "jd_warning": (
-                        "Short job description detected. "
-                        "Automatically expanded using the 'ai developer' role profile "
-                        "(8 skills added)."
-                    ),
-                    "matched_role": "ai developer",
-                    "keyword_breakdown": {
-                        "core_skills": ["machine learning", "deep learning", "python"],
-                        "tools": ["tensorflow", "pytorch"],
-                        "concepts": ["model deployment", "nlp"],
                     },
+                    "semantic_matches": [],
+                    "formatting": {
+                        "has_contact_details": True,
+                        "has_github": True,
+                        "has_linkedin": True,
+                        "has_professional_summary": True,
+                        "has_skills_section": True,
+                        "has_education": True,
+                        "has_projects": True,
+                        "has_experience": True,
+                        "readable_headings": True,
+                        "parse_quality_good": True,
+                        "resume_length_optimal": True,
+                        "section_ordering_logical": True
+                    },
+                    "recommendations": ["Add Kubernetes to your skills section if you have experience with it."],
+                    "ai_feedback": "Your resume is a strong match for this role, particularly your Python and ML experience."
                 }
             ]
         }
     }
+

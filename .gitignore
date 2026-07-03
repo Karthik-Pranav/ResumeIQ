@@ -1,15 +1,133 @@
-# Python
+# ─────────────────────────────────────────────────────────────────────────────
+#  ResumeIQ — .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+develop-eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ── Virtual Environments ──────────────────────────────────────────────────────
 venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Environment
-.env
-
-# Node
+# ── Node / npm ────────────────────────────────────────────────────────────────
 node_modules/
-.next/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+package-lock.json
+yarn.lock
 
-# OS
+# ── Next.js ───────────────────────────────────────────────────────────────────
+.next/
+out/
+.next-cache/
+next-env.d.ts
+
+# ── Build outputs ─────────────────────────────────────────────────────────────
+build/
+dist/
+coverage/
+
+# ── Environment / Secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+*.log.*
+
+# ── Operating System ─────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+
+# ── IDEs / Editors ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+
+# ── Temporary / Upload Files ─────────────────────────────────────────────────
+uploads/
+temp/
+tmp/
+*.tmp
+*.temp
+
+# ── AI / ML Artifacts ────────────────────────────────────────────────────────
+# Sentence-transformer model cache (downloaded at runtime)
+.cache/
+models/
+*.bin
+*.pt
+*.pkl
+*.pickle
+*.h5
+*.onnx
+
+# HuggingFace cache (typically ~/.cache/huggingface but exclude if local)
+huggingface/
+
+# Embeddings / vector index caches
+embeddings_cache/
+vector_index/
+
+# ── Test / Debug Files ───────────────────────────────────────────────────────
+test_resume.pdf
+*.pdf
+debug_*.py
+scratch_*.py

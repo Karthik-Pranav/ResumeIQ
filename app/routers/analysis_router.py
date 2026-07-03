@@ -1,17 +1,19 @@
 """Router for the /analyze endpoint."""
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.models.schemas import AnalysisResponse
 from app.services.analysis_service import analyze_resume
 from app.utils.file_helpers import validate_pdf
 from app.utils.pdf_parser import extract_text_from_pdf
+from app.utils.rate_limiter import rate_limit_dependency
 
 router = APIRouter(prefix="/analyze", tags=["Analysis"])
 
 
 @router.post(
     "",
+    dependencies=[Depends(rate_limit_dependency)],
     response_model=AnalysisResponse,
     summary="Analyse a resume against a job description",
     description=(

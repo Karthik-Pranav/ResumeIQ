@@ -183,4 +183,9 @@ Handling vague job descriptions was another challenge. Instead of returning weak
 
 One deliberate trade-off was using a static skill map instead of a generative approach. While less flexible, it ensures deterministic, explainable outputs without introducing external dependencies.
 
-If I had more time, I would expand skill coverage using a structured taxonomy and explore hybrid LLM-based enhancements for better generalization.
+During testing, I noticed that the system still struggles with loosely structured or informal job descriptions. For example, inputs like "web developer, with experience in mongodb, next.js, express, and react preferably some ai skills as well" can lead to noisy keyword extraction, where non-skill tokens such as "preferably" or "well" are incorrectly treated as skills. This happens because the current keyword extraction pipeline, while improved with a phrase whitelist, still allows residual tokens when the input is not cleanly structured.
+
+Another limitation is normalization. Variations like "React" vs "React.js" or "Next.js" vs "Next.js 15" are not fully unified, which can cause valid skills to appear as gaps. Similarly, the semantic matching threshold can sometimes be too strict for borderline matches, especially when phrasing differs.
+
+These issues highlight that while the core embedding-based approach is strong, the preprocessing and normalization layers are equally important for producing clean, reliable outputs. With more time, I would improve this by adding stricter filtering, better normalization rules, and potentially a lightweight parsing step to clean user input before analysis.
+

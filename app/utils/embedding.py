@@ -7,6 +7,7 @@ a function to encode text into dense vector embeddings.
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 
 import numpy as np
@@ -14,7 +15,7 @@ from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 
 @lru_cache(maxsize=1)

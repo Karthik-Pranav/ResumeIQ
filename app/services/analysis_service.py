@@ -1,139 +1,119 @@
 """Resume analysis service — business logic layer.
 
-Uses sentence-transformer embeddings for semantic similarity scoring,
-keyword-based extraction for strengths / gaps, and chunk-level
-matching to surface the most relevant resume sections.
-
-Intelligence upgrade (v2)
---------------------------
-* Weak/vague JDs are expanded before embedding comparison, so the
-  overall score reflects the full role profile rather than a 2-word phrase.
-* Strengths and gaps use embedding-based detection (not exact string match).
-* Top-3 matched sections are always returned even on moderate similarity.
-* The response carries optional explanation metadata (jd_warning,
-  matched_role, keyword_breakdown) for the UI.
+Orchestrates the v3 Pipeline:
+1. Parse Resume -> Structured JSON
+2. Parse JD -> Structured JSON
+3. Keyword Matching (with Ontology and Normalization)
+4. Semantic Matching
+5. ATS Scoring
+6. Recommendations & AI Feedback
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
-import numpy as np
-
-from app.models.schemas import AnalysisResponse, MatchedSection
-from app.utils.chunker import split_into_chunks
-from app.utils.embedding import get_embedding, get_embeddings_batch
-from app.utils.keyword_analysis import analyze_keywords
-from app.utils.similarity import cosine_similarity, similarity_to_score
+from app.models.schemas import AnalysisResponse
+from app.utils.resume_parser import parse_resume
+from app.utils.jd_parser import parse_jd
+from app.utils.keyword_matcher import match_skills
+from app.utils.semantic_matcher import calculate_semantic_matches
+from app.utils.ats_scorer import analyze_formatting, calculate_scores
+from app.utils.recommendation_engine import generate_recommendations
+from app.utils.feedback_generator import generate_ai_feedback
 
 logger = logging.getLogger(__name__)
 
-# Number of top resume chunks to return in the response.
-_TOP_K_SECTIONS = 3
-
-
 async def analyze_resume(resume_text: str, job_description: str) -> AnalysisResponse:
-    """Analyse a resume against a job description.
+    """Analyse a resume against a job description using the v3 modular pipeline.
 
     Args:
         resume_text:     Plain-text content extracted from the resume PDF.
         job_description: The target job description to compare against.
 
     Returns:
-        An AnalysisResponse with match_score, strengths, gaps,
-        matched_sections, and optional explanation metadata.
+        An AnalysisResponse containing detailed scores, evidence, and AI feedback.
     """
-    # Step 1 — keyword analysis (includes JD expansion + semantic matching)
-    kw_result = analyze_keywords(resume_text, job_description, top_n=6)
-
-    # Step 2 — use the (possibly expanded) JD for the overall embedding score
-    expansion = kw_result.jd_expansion
-    effective_jd = expansion.expanded_jd if expansion else job_description
-    match_score = _compute_score(resume_text, effective_jd)
-
-    # Step 3 — chunk-level matched sections (always ≥ top-3)
-    matched_sections = _find_matched_sections(resume_text, effective_jd)
-
-    # Step 4 — build explanation metadata
-    jd_warning: str | None = expansion.warning if expansion else None
-    matched_role: str | None = expansion.matched_role if expansion else None
-    keyword_breakdown: dict | None = (
-        kw_result.extracted_keywords.to_dict()
-        if kw_result.extracted_keywords
-        else None
+    
+    # 1. Parse texts into structured data
+    parsed_resume = await asyncio.to_thread(parse_resume, resume_text)
+    parsed_jd = await asyncio.to_thread(parse_jd, job_description)
+    
+    # 2. Keyword Matching (includes Normalization and Ontology internally)
+    kw_results = await asyncio.to_thread(
+        match_skills, 
+        parsed_jd.required_skills, 
+        parsed_jd.preferred_skills, 
+        parsed_resume
     )
-
+    
+    matched_skills = kw_results["matched_skills"]
+    missing_required = kw_results["missing_required"]
+    missing_preferred = kw_results["missing_preferred"]
+    evidence = kw_results["evidence"]
+    
+    # 3. Semantic Matching (Projects/Experience vs JD Responsibilities)
+    semantic_matches = await asyncio.to_thread(
+        calculate_semantic_matches,
+        parsed_resume,
+        parsed_jd
+    )
+    
+    # 4. ATS Formatting Analysis
+    formatting = await asyncio.to_thread(analyze_formatting, parsed_resume)
+    
+    # 5. Calculate Final Scores
+    scores = await asyncio.to_thread(
+        calculate_scores,
+        matched_required=len([s for s in parsed_jd.required_skills if s in matched_skills]),
+        total_required=len(parsed_jd.required_skills),
+        matched_preferred=len([s for s in parsed_jd.preferred_skills if s in matched_skills]),
+        total_preferred=len(parsed_jd.preferred_skills),
+        parsed_resume=parsed_resume,
+        semantic_matches=semantic_matches,
+        formatting=formatting
+    )
+    
+    # 6. Generate Recommendations
+    recommendations = await asyncio.to_thread(
+        generate_recommendations,
+        formatting,
+        missing_required,
+        missing_preferred
+    )
+    
+    # 7. Generate AI Feedback
+    # Prepare dict for feedback generator
+    feedback_payload = {
+        "overall_score": scores["overall_score"],
+        "matched_skills": matched_skills,
+        "missing_required": missing_required,
+        "missing_preferred": missing_preferred,
+        "recommendations": recommendations
+    }
+    
+    ai_feedback = await asyncio.to_thread(generate_ai_feedback, feedback_payload)
+    
+    # 8. Return response conforming to new AnalysisResponse schema
     return AnalysisResponse(
-        match_score=match_score,
-        strengths=kw_result.strengths,
-        gaps=kw_result.gaps,
-        matched_sections=matched_sections,
-        jd_warning=jd_warning,
-        matched_role=matched_role,
-        keyword_breakdown=keyword_breakdown,
+        overall_score=scores["overall_score"],
+        required_skills_score=scores["required_skills_score"],
+        preferred_skills_score=scores["preferred_skills_score"],
+        semantic_score=scores["semantic_score"],
+        ats_score=scores["ats_score"],
+        experience_score=scores["experience_score"],
+        education_score=scores["education_score"],
+        projects_score=scores["projects_score"],
+        
+        matched_skills=matched_skills,
+        missing_required=missing_required,
+        missing_preferred=missing_preferred,
+        
+        evidence=evidence,
+        semantic_matches=semantic_matches,
+        
+        formatting=formatting,
+        recommendations=recommendations,
+        ai_feedback=ai_feedback
     )
-
-
-def _compute_score(resume_text: str, job_description: str) -> int:
-    """Compute a 0–100 match score using embedding cosine similarity."""
-    resume_emb = get_embedding(resume_text)
-    jd_emb = get_embedding(job_description)
-    raw_sim = cosine_similarity(resume_emb, jd_emb)
-    score = similarity_to_score(raw_sim)
-    logger.info("Semantic similarity: %.4f → score: %d", raw_sim, score)
-    return score
-
-
-def _find_matched_sections(
-    resume_text: str,
-    job_description: str,
-) -> list[MatchedSection]:
-    """Find the top resume chunks most relevant to the job description.
-
-    Always returns exactly _TOP_K_SECTIONS results (even at moderate
-    similarity) — similarity is a relative rank, not a hard gate.
-
-    Algorithm:
-        1. Chunk both texts.
-        2. Batch-embed all chunks.
-        3. Build a similarity matrix (resume_chunks × jd_chunks).
-        4. For each resume chunk take its best JD-chunk similarity.
-        5. Return the top-K resume chunks sorted by best similarity.
-    """
-    resume_chunks = split_into_chunks(resume_text)
-    jd_chunks = split_into_chunks(job_description)
-
-    if not resume_chunks:
-        return []
-
-    # If JD is a single short phrase after expansion it may still not chunk
-    # properly — embed the full JD text as a single "chunk" fallback.
-    if not jd_chunks:
-        jd_chunks = [job_description]
-
-    # Batch-embed (one model call per set of chunks)
-    resume_embs = get_embeddings_batch(resume_chunks)   # (R, D)
-    jd_embs     = get_embeddings_batch(jd_chunks)       # (J, D)
-
-    # Similarity matrix via dot product (embeddings are already normalised)
-    sim_matrix: np.ndarray = resume_embs @ jd_embs.T   # (R, J)
-
-    # For each resume chunk, find the best-matching JD chunk
-    best_jd_idx = sim_matrix.argmax(axis=1)             # (R,)
-    best_sim    = sim_matrix.max(axis=1)                # (R,)
-
-    # Rank resume chunks by similarity (descending); always take top-K
-    k = min(_TOP_K_SECTIONS, len(resume_chunks))
-    top_indices = best_sim.argsort()[::-1][:k]
-
-    matched: list[MatchedSection] = []
-    for idx in top_indices:
-        matched.append(
-            MatchedSection(
-                resume_chunk=resume_chunks[idx],
-                job_chunk=jd_chunks[int(best_jd_idx[idx])],
-                similarity_score=round(float(best_sim[idx]), 4),
-            )
-        )
-
-    return matched
